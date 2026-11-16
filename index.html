@@ -14,10 +14,10 @@ body{grid-template-columns:var(--left-width,250px) minmax(200px,1fr) var(--right
 
 .editor-preview #paper .bullet-mark{visibility:hidden}#bullet-overlay{position:fixed;left:0;top:0;pointer-events:none;z-index:12}@media print{#bullet-overlay{display:none}.editor-preview #paper .bullet-mark{visibility:visible}}
 </style></head><body>
-<aside class="left"><div class="brand">C <b>简历工作台</b></div><div class="panel-heading">Pages · 简历 <button id="import" title="导入工作台 JSON">＋</button></div><div id="templates"></div><div class="panel-heading">Layers · 图层与分组</div><div id="layers"></div><div id="save-status">已保存</div></aside>
+<aside class="left"><div class="brand">C <b>简历工作台</b></div><div class="panel-heading">Pages · 简历 <button id="import" title="批量导入 JSON / PDF">＋</button></div><div id="templates"></div><div class="panel-heading">Layers · 图层与分组</div><div id="layers"></div><div id="save-status">已保存</div></aside>
 <main id="viewport"><div id="stage"><article id="paper"></article></div><div class="zoom-bar"><button id="zoom-out">−</button><button id="zoom-value">100%</button><button id="zoom-in">＋</button><button id="fit">适应页面</button></div></main>
-<aside class="right"><div class="actions"><button id="mode">移动模式</button><button id="export">导出 PDF</button></div><div class="actions"><button id="undo">↶ 撤销</button><button id="redo">↷ 重做</button></div><div class="actions"><button id="backup">导出 JSON / 交给 AI</button><button id="new-template">新建模板</button></div><details><summary>保存与 AI 使用说明</summary><p>简历只保存在当前浏览器。请定期导出 JSON 备份；清除网站数据或换设备不会自动保留。共享同一浏览器的人也能看到本地简历。</p><p>把 JSON 与岗位要求交给 AI，要求只修改 text/name，保留 id、parent 和排版参数；下载 AI 返回的完整 JSON，再点击＋导入。请自行决定交给 AI 的个人信息。</p><p>本版导入支持工作台 JSON，不支持 PDF 自动识别。导出 PDF 时请选择另存为 PDF、A4、100% 缩放、关闭页眉页脚。</p></details><div id="inspector"></div><p class="help">单击选择 · 双击编辑文字<br>方向键移动 · Shift＋方向键 10px<br>Shift＋拖动保持水平或垂直<br>Ctrl＋滚轮缩放画布<br>Ctrl＋Z 撤销 · Ctrl＋Shift＋Z 重做</p></aside>
-<input id="file" type="file" accept=".json" hidden><div id="menu" hidden></div><div id="toast" role="status"></div>
+<aside class="right"><div class="actions"><button id="mode">移动模式</button><button id="export">导出 PDF</button></div><div class="actions"><button id="undo">↶ 撤销</button><button id="redo">↷ 重做</button></div><div class="actions"><button id="backup">导出 JSON / 交给 AI</button><button id="new-template">新建模板</button></div><details><summary>保存与 AI 使用说明</summary><p>简历只保存在当前浏览器。请定期导出 JSON 备份；正常关闭浏览器或关机后，用同一浏览器配置打开同一网址，已保存的简历仍会保留。无痕模式、清除网站数据或换设备可能丢失。不同用户的浏览器数据互不相通；共享同一浏览器配置的人也能看到本地简历。</p><p>把 JSON 与岗位要求交给 AI，要求只修改 text/name，保留 id、parent 和排版参数；下载 AI 返回的完整 JSON，再点击＋导入。请自行决定交给 AI 的个人信息。</p><p>点击左侧＋，可按 Ctrl / Shift 多选 JSON 或 PDF 批量导入。PDF 在本机识别为可编辑文字，多页分别创建简历；暂不支持扫描件、图片或转曲文字。PDF 字体、加粗、图片和分隔线可能无法完全还原，导入后请检查排版。导出 PDF 时请选择另存为 PDF、A4、100% 缩放、关闭页眉页脚。</p></details><details id="import-report" hidden><summary>导入结果</summary><pre id="import-results" style="white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.6 inherit"></pre></details><div id="inspector"></div><p class="help">单击选择 · 双击编辑文字<br>方向键移动 · Shift＋方向键 10px<br>Shift＋拖动保持水平或垂直<br>Ctrl＋滚轮缩放画布<br>Ctrl＋Z 撤销 · Ctrl＋Shift＋Z 重做</p></aside>
+<input id="file" type="file" accept=".json,.pdf,application/json,application/pdf" multiple hidden><div id="menu" hidden></div><div id="toast" role="status"></div>
 <script>(async()=>{
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function nodeHTML(n){
@@ -35,7 +35,7 @@ let timer,saving=Promise.resolve(),drag;
 const DBKEY='resume-studio-public-v1';
 function readDB(){const raw=localStorage.getItem(DBKEY);return raw?JSON.parse(raw):[structuredClone(SEED)]}
 function writeDB(docs){localStorage.setItem(DBKEY,JSON.stringify(docs))}
-function validate(d){if(d.version!==2||!Array.isArray(d.nodes)||d.nodes.length>2000)throw Error('请选择有效的工作台 JSON');const ids=new Set();const ns=d.nodes.map(n=>{if(!/^[a-zA-Z0-9_-]+$/.test(n.id)||ids.has(n.id))throw Error('图层编号无效');ids.add(n.id);if(!['text','group','line','rule'].includes(n.kind))throw Error('图层类型无效');const out={id:n.id,kind:n.kind,parent:n.parent||null,name:String(n.name||'图层'),text:String(n.text||'')};for(const k of ['x','y','w','h','size','weight','lineHeight','letterSpacing']){if(n[k]!==undefined){const v=Number(n[k]);if(!Number.isFinite(v)||Math.abs(v)>10000)throw Error('排版参数无效');out[k]=v}}for(const k of ['bullet','boldPrefix','noWrap'])out[k]=!!n[k];out.align=['left','center','right'].includes(n.align)?n.align:'left';out.color=/^#[0-9a-f]{6}$/i.test(n.color)?n.color:'#595959';return out});for(const n of ns){const seen=new Set([n.id]);let p=n.parent;while(p){if(seen.has(p)||!ids.has(p))throw Error('分组关系无效');seen.add(p);p=ns.find(x=>x.id===p).parent}}return {version:2,id:String(d.id||'resume'),title:String(d.title||'我的简历'),width:595,height:842,nodes:ns}}
+function validate(d){if(!d||typeof d!=='object')throw Error('请选择有效的工作台 JSON');if(d.version!==2||!Array.isArray(d.nodes)||d.nodes.length>2000)throw Error('请选择有效的工作台 JSON');const ids=new Set();const ns=d.nodes.map(n=>{if(!/^[a-zA-Z0-9_-]+$/.test(n.id)||ids.has(n.id))throw Error('图层编号无效');ids.add(n.id);if(!['text','group','line','rule'].includes(n.kind))throw Error('图层类型无效');const out={id:n.id,kind:n.kind,parent:n.parent||null,name:String(n.name||'图层'),text:String(n.text||'')};for(const k of ['x','y','w','h','size','weight','lineHeight','letterSpacing']){if(n[k]!==undefined){const v=Number(n[k]);if(!Number.isFinite(v)||Math.abs(v)>10000)throw Error('排版参数无效');out[k]=v}}for(const k of ['bullet','boldPrefix','noWrap'])out[k]=!!n[k];out.align=['left','center','right'].includes(n.align)?n.align:'left';out.color=/^#[0-9a-f]{6}$/i.test(n.color)?n.color:'#595959';return out});for(const n of ns){const seen=new Set([n.id]);let p=n.parent;while(p){if(seen.has(p)||!ids.has(p))throw Error('分组关系无效');seen.add(p);p=ns.find(x=>x.id===p).parent}}return {version:2,id:String(d.id||'resume'),title:String(d.title||'我的简历'),width:595,height:842,nodes:ns}}
 const api=async(path,options={})=>{const docs=readDB(),id=path.split('/')[1],method=options.method||'GET';if(method==='GET')return id?structuredClone(docs.find(d=>d.id===id)):docs.map(d=>({id:d.id,title:d.title}));if(method==='DELETE'){writeDB(docs.filter(d=>d.id!==id));return {ok:true}}const body=JSON.parse(options.body);if(method==='POST'){const d=validate(body.document);d.id='resume-'+crypto.randomUUID();docs.push(d);writeDB(docs);return {id:d.id}}const d=validate(body),i=docs.findIndex(x=>x.id===id);if(i<0)throw Error('简历不存在');docs[i]=d;writeDB(docs);return {ok:true}};
 function toast(t){$('#toast').textContent=t;$('#toast').className='show';setTimeout(()=>$('#toast').className='',3500)}
 function checkpoint(){if(!S.doc)return;const text=JSON.stringify(S.doc);if(S.past.at(-1)!==text)S.past.push(text);if(S.past.length>100)S.past.shift();S.future=[];buttons()}
@@ -100,7 +100,43 @@ function rename(id){const b=$(`[data-page="${id}"]`);if(!b)return;const d=S.list
 $('#templates').ondblclick=e=>{const b=e.target.closest('[data-page]');if(b)rename(b.dataset.page)};
 async function action(a,id){if(a==='rename')return rename(id);if(a==='copy'){await save();S.clipboard=clone(id===S.doc?.id?S.doc:await api('templates/'+id));toast('已复制，可右键粘贴');return}if(a==='paste'||a==='duplicate'){await save();const d=a==='paste'?clone(S.clipboard):clone(await api('templates/'+id));if(!d)return;d.title+=' 副本';const r=await api('templates',{method:'POST',body:JSON.stringify({document:d})});await list();await open(r.id)}if(a==='delete'){if(!confirm('删除这份简历？'))return;await save();await api('templates/'+id,{method:'DELETE'});if(S.doc?.id===id){S.doc=null;S.selected=null;S.multi.clear();S.past=[];S.future=[]}await list();if(!S.doc&&S.list.length)await open(S.list[0].id);else render()}}
 $('#templates').oncontextmenu=e=>{e.preventDefault();const id=e.target.closest('[data-page]')?.dataset.page;const m=$('#menu');m.innerHTML=(id?[['copy','复制'],['duplicate','创建副本'],['paste','粘贴'],['rename','重命名'],['delete','删除']]:[['paste','粘贴']]).map(([a,t])=>`<button data-action="${a}" ${a==='paste'&&!S.clipboard?'disabled':''}>${t}</button>`).join('');m.style.left=Math.min(e.clientX,innerWidth-170)+'px';m.style.top=Math.min(e.clientY,innerHeight-220)+'px';m.hidden=false;m.onclick=ev=>{const a=ev.target.dataset.action;if(a){m.hidden=true;action(a,id).catch(fail)}}};document.addEventListener('pointerdown',e=>{if(!e.target.closest('#menu'))$('#menu').hidden=true});
-$('#import').onclick=()=>$('#file').click();$('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=validate(JSON.parse(await f.text()));const r=await api('templates',{method:'POST',body:JSON.stringify({document:d})});await list();await open(r.id);toast('已导入为新简历，原版本仍保留')}catch(e){fail(e)}finally{e.target.value=''}};
+let importing=false;
+$('#import').onclick=()=>$('#file').click();
+$('#file').onchange=async e=>{
+ const files=Array.from(e.target.files||[]);e.target.value='';if(!files.length||importing)return;
+ importing=true;$('#import').disabled=true;
+ let count=0,lastId=null;const report=[];
+ try {
+  await save();
+  for(const [index,f] of files.entries()){
+   $('#save-status').textContent=`正在导入 ${index+1}/${files.length}：${f.name}`;
+   try {
+    if(f.size>30*1024*1024)throw Error('文件超过 30 MB，请压缩后导入');
+    let incoming;
+    if(/\.pdf$/i.test(f.name)){
+     const {importPDF}=await import('./pdf-import.mjs');incoming=await importPDF(f);
+    } else if(/\.json$/i.test(f.name)){
+     const data=JSON.parse(await f.text());incoming=Array.isArray(data)?data:[data];
+    } else throw Error('仅支持 JSON 或 PDF');
+    if(!incoming.length||incoming.length>100)throw Error('每个文件需包含 1–100 份简历');
+    const docs=incoming.map(validate); // Validate entire file before any write.
+    const existing=readDB();
+    for(const d of docs)d.id='resume-'+crypto.randomUUID();
+    writeDB([...existing,...docs]); // One atomic storage write per file.
+    lastId=docs.at(-1).id;count+=docs.length;
+    report.push(`✓ ${f.name}：已新增 ${docs.length} 份`);
+   } catch(error){report.push(`✗ ${f.name}：${error.name==='QuotaExceededError'?'浏览器存储已满，请先备份并删除不需要的简历':error.message}`)}
+  }
+  await list();if(lastId)await open(lastId);
+  $('#save-status').textContent='已保存';
+ } catch(error){report.push('导入中止：'+error.message);fail(error)}
+ finally {
+  importing=false;$('#import').disabled=false;
+  $('#import-report').hidden=false;$('#import-report').open=true;
+  $('#import-results').textContent=`本次新增 ${count} 份简历。原简历均保留。\n`+report.join('\n');
+  toast(`导入完成，新增 ${count} 份；详细结果见右侧`);
+ }
+};
 function download(name,text){const url=URL.createObjectURL(new Blob([text],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 $('#backup').onclick=async()=>{if(S.doc){await save();download(S.doc.title+'.json',JSON.stringify(S.doc,null,2))}};
 $('#new-template').onclick=async()=>{const r=await api('templates',{method:'POST',body:JSON.stringify({document:SEED})});await list();await open(r.id)};
@@ -108,7 +144,7 @@ $('#export').onclick=async()=>{if(!S.doc)return;const w=window.open('','_blank')
 
 window.addEventListener('beforeunload',e=>{if(S.dirty){e.preventDefault();e.returnValue=''}});
 $('#paper').tabIndex=0;
-setInterval(async()=>{if(S.dirty||drag||pageDrag||document.activeElement?.matches('input,textarea,[contenteditable=true]'))return;try{await list();if(S.doc){const d=await api('templates/'+S.doc.id);if(JSON.stringify(d)!==JSON.stringify(S.doc)){S.doc=d;render()}}}catch{}},3000);
+setInterval(async()=>{if(importing||S.dirty||drag||pageDrag||document.activeElement?.matches('input,textarea,[contenteditable=true]'))return;try{await list();if(S.doc){const d=await api('templates/'+S.doc.id);if(JSON.stringify(d)!==JSON.stringify(S.doc)){S.doc=d;render()}}}catch{}},3000);
 let pageDrag=null;
 const templates=$('#templates');
 templates.addEventListener('dragstart',e=>{const b=e.target.closest('[data-page]');if(!b||e.target.closest('input')){e.preventDefault();return}pageDrag=b.dataset.page;e.dataTransfer.setData('text/plain',pageDrag);e.dataTransfer.effectAllowed='move'});
